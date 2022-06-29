@@ -47,6 +47,7 @@ namespace CacheService.Models
 
         public TelegramBuilder AddField(string value, uint from_index, uint field_length)
         {
+            if (string.IsNullOrEmpty(value)) return this;
             fields.Add(new Field(value, from_index, field_length));
             return this;
         }

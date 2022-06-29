@@ -44,7 +44,10 @@ using System.Text;
 //        ),
 //    new Parse(new Telegram54().Node("4").Build()));
 
-AsynchronousSocketListener.StartListening();
+var server = new AsynchronousSocketListener("127.0.0.1", 11000);
+server.StartListeningThread();
+
+var client = new AsynchronousClient("127.0.0.1", 11001);
 
 
 var builder = WebApplication.CreateBuilder(args);

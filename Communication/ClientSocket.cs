@@ -26,17 +26,15 @@ namespace CacheService.Communications
         private const int port = 11000;
 
         // ManualResetEvent instances signal completion.  
-        private static ManualResetEvent connectDone =
-            new ManualResetEvent(false);
-        private static ManualResetEvent sendDone =
-            new ManualResetEvent(false);
-        private static ManualResetEvent receiveDone =
-            new ManualResetEvent(false);
+        private ManualResetEvent connectDone = new ManualResetEvent(false);
+        private ManualResetEvent connectFailed = new ManualResetEvent(false);
+        private ManualResetEvent sendDone = new ManualResetEvent(false);
+        private ManualResetEvent receiveDone = new ManualResetEvent(false);
 
         // The response from the remote device.  
         private static String response = String.Empty;
 
-        private IPAddress ipAddress { get; set; } = null;
+        private IPAddress ipAddress { get; set; }
         private IPEndPoint remoteEndPoint { get; set; }
         public Task clientTask { get; set; }
 
@@ -67,11 +65,17 @@ namespace CacheService.Communications
                 // Create a TCP/IP socket.  
                 Socket client = new Socket(ipAddress.AddressFamily,
                     SocketType.Stream, ProtocolType.Tcp);
+                client.NoDelay = true;
 
-                // Connect to the remote endpoint.  
-                client.BeginConnect(remoteEndPoint,
-                    new AsyncCallback(ConnectCallback), client);
-                connectDone.WaitOne();
+                do
+                {
+                    Thread.Sleep(1000);
+                    // Connect to the remote endpoint.  
+                    client.BeginConnect(remoteEndPoint,
+                        new AsyncCallback(ConnectCallback), client);
+                    connectDone.WaitOne();
+
+                } while (!client.Connected);
 
                 // Send test data to the remote device.  
                 Send(client, "This is a test<EOF>");
@@ -88,36 +92,39 @@ namespace CacheService.Communications
                 client.Shutdown(SocketShutdown.Both);
                 client.Close();
 
+
+
             }
+
             catch (Exception e)
             {
                 Console.WriteLine(e.ToString());
             }
         }
 
-        private static void ConnectCallback(IAsyncResult ar)
+        private void ConnectCallback(IAsyncResult ar)
         {
+
+            // Retrieve the socket from the state object.  
+            Socket client = (Socket)ar.AsyncState;
             try
             {
-                // Retrieve the socket from the state object.  
-                Socket client = (Socket)ar.AsyncState;
-
                 // Complete the connection.  
                 client.EndConnect(ar);
-
-                Console.WriteLine("Socket connected to {0}",
-                    client.RemoteEndPoint.ToString());
-
-                // Signal that the connection has been made.  
-                connectDone.Set();
             }
-            catch (Exception e)
+            catch (SocketException e)
             {
-                Console.WriteLine(e.ToString());
+                connectDone.Set();
+                return;
             }
+            Console.WriteLine("Socket connected to {0}",
+                client.RemoteEndPoint.ToString());
+
+            // Signal that the connection has been made.  
+            connectDone.Set();
         }
 
-        private static void Receive(Socket client)
+        private void Receive(Socket client)
         {
             try
             {
@@ -135,12 +142,13 @@ namespace CacheService.Communications
             }
         }
 
-        private static void ReceiveCallback(IAsyncResult ar)
+        private void ReceiveCallback(IAsyncResult ar)
         {
             try
             {
                 // Retrieve the state object and the client socket
                 // from the asynchronous state object.  
+                if (ar.AsyncState == null) return;
                 StateObject state = (StateObject)ar.AsyncState;
                 Socket client = state.workSocket;
 
@@ -173,7 +181,7 @@ namespace CacheService.Communications
             }
         }
 
-        private static void Send(Socket client, String data)
+        private void Send(Socket client, String data)
         {
             // Convert the string data to byte data using ASCII encoding.  
             byte[] byteData = Encoding.ASCII.GetBytes(data);
@@ -183,7 +191,7 @@ namespace CacheService.Communications
                 new AsyncCallback(SendCallback), client);
         }
 
-        private static void SendCallback(IAsyncResult ar)
+        private void SendCallback(IAsyncResult ar)
         {
             try
             {

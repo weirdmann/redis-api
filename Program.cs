@@ -47,7 +47,7 @@ using System.Text;
 var server = new AsynchronousSocketListener("127.0.0.1", 11000);
 server.StartListeningThread();
 
-var client = new AsynchronousClient("127.0.0.1", 11001);
+//var client = new AsynchronousClient("127.0.0.1", 11001);
 
 
 var builder = WebApplication.CreateBuilder(args);

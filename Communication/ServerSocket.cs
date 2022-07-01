@@ -116,11 +116,16 @@ namespace CacheService.Communications
         public string id = Guid.NewGuid().ToString();
 
         // message queue
-        public ConcurrentQueue<Message> messagesToSend = new ConcurrentQueue<Message>();
-
+        //public ConcurrentQueue<Message> messagesToSend = new ConcurrentQueue<Message>();
+        public BlockingCollection<Message> messagesToSend = new BlockingCollection<Message>();
         public Task? receiveTask, sendTask;
 
-        public CancellationToken cancellationToken = new CancellationToken();
+        //public CancellationToken cancellationToken = new CancellationToken();
+        public CancellationTokenSource cts = new CancellationTokenSource();
+        public StateObject()
+        {
+            
+        }
     }
 
     public class AsynchronousSocketListener : Sender
@@ -218,10 +223,21 @@ namespace CacheService.Communications
             if (state == null) return;
 
             Socket handler = state.workSocket;
-
+            int bytesRead = 0;
             // Read data from the client socket.
-            int bytesRead = handler.EndReceive(ar);
-
+            try
+            {
+                bytesRead = handler.EndReceive(ar);
+                if (bytesRead <= 0)
+                {
+                    Console.WriteLine("Client disconnected, cancelling...");
+                    state.cts.Cancel();
+                }
+            }
+            catch (SocketException e)
+            {
+                Console.WriteLine(e.Message);
+            }
             if (bytesRead > 0)
             {
                 // There  might be more data, so store the data received so far.  
@@ -238,10 +254,13 @@ namespace CacheService.Communications
                     Console.WriteLine("Read {0} bytes from socket. \n Data : {1}",
                         content.Length, content);
                     // Echo the data back to the client.  
-                    state.messagesToSend.Enqueue(new Message(content));
-                    Send(handler, content);
+                    //state.messagesToSend.Enqueue(new Message(content));
+                    state.messagesToSend.Add(new Message(content));
+                    state.sb.Clear();
+                    //state.buffer = new byte[];
+                    //Send(handler, content);
                 }
-                else
+                //else
                 {
                     // Not all data received. Get more.  
                     handler.BeginReceive(state.buffer, 0, StateObject.BufferSize, 0,
@@ -250,7 +269,7 @@ namespace CacheService.Communications
             }
         }
 
-        private static void Send(Socket handler, String data)
+        private static void SendData(Socket handler, String data)
         {
             // Convert the string data to byte data using ASCII encoding.  
             byte[] byteData = Encoding.ASCII.GetBytes(data);
@@ -266,13 +285,25 @@ namespace CacheService.Communications
             {
                 Console.WriteLine("Started sending thread for client id: " + state.id);
                 Message? message;
-                while (!state.cancellationToken.IsCancellationRequested)
+                while (!state.cts.Token.IsCancellationRequested)
                 {
-                    if (state.messagesToSend.TryDequeue(result: out message))
+                    //if (state.messagesToSend.TryDequeue(result: out message))
+                    //{
+                    //    if (message == null) continue;
+                    //    Send(state.workSocket, message.GetString());
+                    //}
+                    try
                     {
-                        if (message == null) continue;
-                        Send(state.workSocket, message.GetString());
+                        message = state.messagesToSend.Take(state.cts.Token);
+                        SendData(state.workSocket, message.GetString());
+                    } 
+                    catch (OperationCanceledException e)
+                    {
+                        Console.WriteLine(e.Message);
+                        state.workSocket.Disconnect(true);
                     }
+
+                    
                 }
 
             } catch
@@ -292,8 +323,8 @@ namespace CacheService.Communications
                 int bytesSent = handler.EndSend(ar);
                 Console.WriteLine("Sent {0} bytes to client.", bytesSent);
 
-                handler.Shutdown(SocketShutdown.Both);
-                handler.Close();
+                //handler.Shutdown(SocketShutdown.Both);
+                //handler.Close();
 
             }
             catch (Exception e)

@@ -129,11 +129,10 @@ namespace CacheService.Communications
             try
             {
                 // Create the state object.  
-                StateObject state = new StateObject();
-                state.workSocket = client;
+                RemoteStateObject state = new RemoteStateObject(client);
 
                 // Begin receiving the data from the remote device.  
-                client.BeginReceive(state.buffer, 0, StateObject.BufferSize, 0,
+                client.BeginReceive(state.buffer, 0, RemoteStateObject.BufferSize, 0,
                     new AsyncCallback(ReceiveCallback), state);
             }
             catch (Exception e)
@@ -149,8 +148,8 @@ namespace CacheService.Communications
                 // Retrieve the state object and the client socket
                 // from the asynchronous state object.  
                 if (ar.AsyncState == null) return;
-                StateObject state = (StateObject)ar.AsyncState;
-                Socket client = state.workSocket;
+                RemoteStateObject state = (RemoteStateObject)ar.AsyncState;
+                Socket client = state.socket;
 
                 // Read data from the remote device.  
                 int bytesRead = client.EndReceive(ar);
@@ -161,7 +160,7 @@ namespace CacheService.Communications
                     state.sb.Append(Encoding.ASCII.GetString(state.buffer, 0, bytesRead));
 
                     // Get the rest of the data.  
-                    client.BeginReceive(state.buffer, 0, StateObject.BufferSize, 0,
+                    client.BeginReceive(state.buffer, 0, RemoteStateObject.BufferSize, 0,
                         new AsyncCallback(ReceiveCallback), state);
                 }
                 else

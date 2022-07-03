@@ -112,7 +112,7 @@ namespace CacheService.Communications
                 // Complete the connection.  
                 client.EndConnect(ar);
             }
-            catch (SocketException e)
+            catch (SocketException)
             {
                 connectDone.Set();
                 return;
@@ -129,11 +129,11 @@ namespace CacheService.Communications
             try
             {
                 // Create the state object.  
-                RemoteStateObject state = new RemoteStateObject(client);
+                RemoteStateObject clientState = new RemoteStateObject(client);
 
                 // Begin receiving the data from the remote device.  
-                client.BeginReceive(state.buffer, 0, RemoteStateObject.BufferSize, 0,
-                    new AsyncCallback(ReceiveCallback), state);
+                client.BeginReceive(clientState.buffer, 0, RemoteStateObject.BufferSize, 0,
+                    new AsyncCallback(ReceiveCallback), clientState);
             }
             catch (Exception e)
             {
@@ -148,8 +148,8 @@ namespace CacheService.Communications
                 // Retrieve the state object and the client socket
                 // from the asynchronous state object.  
                 if (ar.AsyncState == null) return;
-                RemoteStateObject state = (RemoteStateObject)ar.AsyncState;
-                Socket client = state.socket;
+                RemoteStateObject clientState = (RemoteStateObject)ar.AsyncState;
+                Socket client = clientState.socket;
 
                 // Read data from the remote device.  
                 int bytesRead = client.EndReceive(ar);
@@ -157,18 +157,18 @@ namespace CacheService.Communications
                 if (bytesRead > 0)
                 {
                     // There might be more data, so store the data received so far.  
-                    state.sb.Append(Encoding.ASCII.GetString(state.buffer, 0, bytesRead));
+                    clientState.sb.Append(Encoding.ASCII.GetString(clientState.buffer, 0, bytesRead));
 
                     // Get the rest of the data.  
-                    client.BeginReceive(state.buffer, 0, RemoteStateObject.BufferSize, 0,
-                        new AsyncCallback(ReceiveCallback), state);
+                    client.BeginReceive(clientState.buffer, 0, RemoteStateObject.BufferSize, 0,
+                        new AsyncCallback(ReceiveCallback), clientState);
                 }
                 else
                 {
                     // All the data has arrived; put it in response.  
-                    if (state.sb.Length > 1)
+                    if (clientState.sb.Length > 1)
                     {
-                        response = state.sb.ToString();
+                        response = clientState.sb.ToString();
                     }
                     // Signal that all bytes have been received.  
                     receiveDone.Set();

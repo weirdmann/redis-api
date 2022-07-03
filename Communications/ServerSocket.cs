@@ -16,7 +16,7 @@ namespace CacheService.Communications
         public void Send(Message[] m, string? clientId = null);
 
     }
-    
+
     public class Subscriber
     {
         public readonly string guid = Guid.NewGuid().ToString();
@@ -41,7 +41,8 @@ namespace CacheService.Communications
         public void StartReadingMessages(Action<Message> callback)
         {
             received = new BlockingCollection<Message>();
-            Task.Factory.StartNew(() => {
+            Task.Factory.StartNew(() =>
+            {
 
                 //if (received == null) return;
                 try
@@ -370,10 +371,9 @@ namespace CacheService.Communications
         {
             if (clientId == null) { mainSendMessageQueue.Enqueue(m); return; };
 
-            if (clientDictionary.ContainsKey(clientId)) {
+            if (clientDictionary.ContainsKey(clientId))
                 clientDictionary[clientId].ToSendQueue.Add(m);
-                Console.WriteLine("Added to clients queue.");
-                    };
+
         }
 
         public void Send(Message[] m, string? clientId = null)

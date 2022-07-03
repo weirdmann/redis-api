@@ -1,9 +1,4 @@
 ﻿
-
-
-
-using System.Collections.Concurrent;
-
 namespace CacheService.Communications
 {
     public class Echo
@@ -18,8 +13,5 @@ namespace CacheService.Communications
                 subscriber.Send(m, m.recipientId);
             });
         }
-
-        
-
     }
 }

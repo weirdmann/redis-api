@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Text;
+using System.Collections.Concurrent;
 
 namespace CacheService.Communications
 {
@@ -20,19 +21,18 @@ namespace CacheService.Communications
     //    public StringBuilder sb = new StringBuilder();
     //}
 
-    public class AsynchronousClient
+    public class AsynchronousClient : ISender
     {
-        // The port number for the remote device.  
-        private const int port = 11000;
-
         // ManualResetEvent instances signal completion.  
         private ManualResetEvent connectDone = new ManualResetEvent(false);
         private ManualResetEvent connectFailed = new ManualResetEvent(false);
         private ManualResetEvent sendDone = new ManualResetEvent(false);
         private ManualResetEvent receiveDone = new ManualResetEvent(false);
 
+        private BlockingCollection<Message> SendQueue = new BlockingCollection<Message>();
+
         // The response from the remote device.  
-        private static String response = String.Empty;
+        private static string response = string.Empty;
 
         private IPAddress ipAddress { get; set; }
         private IPEndPoint remoteEndPoint { get; set; }
@@ -207,6 +207,43 @@ namespace CacheService.Communications
             catch (Exception e)
             {
                 Console.WriteLine(e.ToString());
+            }
+        }
+
+        private Dictionary<string, Subscriber> subscribers = new Dictionary<string, Subscriber>();
+        private BlockingCollection<Message> mainSendMessageQueue = new();
+        public Subscriber Subscribe(bool receiving)
+        {
+            if (subscribers == null) subscribers = new Dictionary<string, Subscriber>();
+            var newSubscriber = new Subscriber(this);
+
+            subscribers[newSubscriber.guid] = newSubscriber;
+            return newSubscriber;
+        }
+
+        public void UnSubscribe(Subscriber s)
+        {
+            if (s == null) throw new ArgumentNullException(nameof(s));
+            if (subscribers == null) return;
+
+            subscribers[s.guid].unsubscribed = true;
+
+        }
+
+        public void Send(Message m, string? clientId = null)
+        {
+            if (clientId == null) {
+                mainSendMessageQueue.Add(m);
+                return;
+            };
+
+        }
+
+        public void Send(Message[] m, string? clientId = null)
+        {
+            foreach (var message in m)
+            {
+                Send(message, clientId);
             }
         }
     }

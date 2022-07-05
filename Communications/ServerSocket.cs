@@ -1,10 +1,7 @@
-﻿using System;
+﻿using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Collections;
-using System.Collections.Concurrent;
-using System.Threading;
 
 namespace CacheService.Communications
 {
@@ -24,16 +21,16 @@ namespace CacheService.Communications
         protected readonly ISender parent;
         public CancellationTokenSource cts = new CancellationTokenSource();
         public bool unsubscribed = false;
-
+        
         public Subscriber(ISender parent)
         {
             Console.WriteLine("new subscriber");
             this.parent = parent ?? throw new ArgumentNullException(nameof(parent));
         }
 
-        public void Notify(Message m)
+        public void Notify(Message m) 
         {
-            if (received == null) return; // subscriber doesn't want to receive
+            if (received == null | unsubscribed) return; // subscriber doesn't want to receive
             received.Add(m);
             Console.WriteLine("Notified:" + m.GetString());
         }
@@ -157,13 +154,13 @@ namespace CacheService.Communications
         private IPEndPoint localEndPoint { get; set; }
 
         private Dictionary<string, Subscriber> subscribers = new Dictionary<string, Subscriber>();
-        public ConcurrentQueue<Message> mainSendMessageQueue;
+        private BlockingCollection<Message> mainSendMessageQueue;
         public ConcurrentDictionary<string, RemoteStateObject> clientDictionary = new ConcurrentDictionary<string, RemoteStateObject>();
         public AsynchronousSocketListener(string ipaddress, int port)
         {
             ipAddress = IPAddress.Parse(ipaddress);
             localEndPoint = new IPEndPoint(ipAddress, port);
-            mainSendMessageQueue = new ConcurrentQueue<Message>();
+            mainSendMessageQueue = new BlockingCollection<Message>();
         }
 
 
@@ -278,10 +275,12 @@ namespace CacheService.Communications
                     //state.messagesToSend.Enqueue(new Message(content));
                     var m = new Message(content);
                     m.recipientId = state.id;
+                    #region Notify subscribers
                     foreach (var subscriber in subscribers)
                     {
                         subscriber.Value.Notify(m);
                     }
+                    #endregion
                     //state.ToSendQueue.Add(new Message(content));
                     state.sb.Clear();
                 }
@@ -369,7 +368,7 @@ namespace CacheService.Communications
 
         public void Send(Message m, string? clientId = null)
         {
-            if (clientId == null) { mainSendMessageQueue.Enqueue(m); return; };
+            if (clientId == null) { mainSendMessageQueue.Add(m); return; };
 
             if (clientDictionary.ContainsKey(clientId))
                 clientDictionary[clientId].ToSendQueue.Add(m);
@@ -384,4 +383,6 @@ namespace CacheService.Communications
             }
         }
     }
+
+    
 }

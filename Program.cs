@@ -1,4 +1,5 @@
 using CacheService.Data;
+using CacheService.Communications;
 using CacheService.Models;
 using StackExchange.Redis;
 using System.Text;
@@ -35,15 +36,20 @@ using System.Text;
 //Console.WriteLine(t2.GetString());
 
 
-Strategist.Do(new Parse(new Telegram54().Node("1").Build()));
-Strategist.WaitAndThen(
-    Strategist.WaitAndThen(
-        Strategist.Fork(new Parse(new Telegram54().Node("2").Build())),
-        new Parse(new Telegram54().Node("3").Build())
-        ),
-    new Parse(new Telegram54().Node("4").Build()));
+//Strategist.Do(new Parse(new Telegram54().Node("1").Build()));
+//Strategist.WaitAndThen(
+//    Strategist.WaitAndThen(
+//        Strategist.Fork(new Parse(new Telegram54().Node("2").Build())),
+//        new Parse(new Telegram54().Node("3").Build())
+//        ),
+//    new Parse(new Telegram54().Node("4").Build()));
 
+var server = new AsynchronousSocketListener("127.0.0.1", 11000);
+server.StartListeningThread();
 
+var e = new Echo(server);
+
+//var client = new AsynchronousClient("127.0.0.1", 11001);
 
 
 var builder = WebApplication.CreateBuilder(args);

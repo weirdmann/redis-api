@@ -49,8 +49,8 @@ using System.Text;
 
 //var e = new Echo(server);
 
-//var client = new AsynchronousClient("127.0.0.1", 11001);
-
+var client = new AsynchronousClient("127.0.0.1", 11001);
+new Echo(client);
 
 var builder = WebApplication.CreateBuilder(args);
 

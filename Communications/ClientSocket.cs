@@ -8,19 +8,6 @@ using System.Collections.Concurrent;
 namespace CacheService.Communications
 {
 
-    //// State object for receiving data from remote device.  
-    //public class StateObject
-    //{
-    //    // Client socket.  
-    //    public Socket workSocket = null;
-    //    // Size of receive buffer.  
-    //    public const int BufferSize = 256;
-    //    // Receive buffer.  
-    //    public byte[] buffer = new byte[BufferSize];
-    //    // Received data string.  
-    //    public StringBuilder sb = new StringBuilder();
-    //}
-
     public class AsynchronousClient : ISender
     {
         // ManualResetEvent instances signal completion.  
@@ -29,7 +16,9 @@ namespace CacheService.Communications
         private ManualResetEvent sendDone = new ManualResetEvent(false);
         private ManualResetEvent receiveDone = new ManualResetEvent(false);
 
-        private BlockingCollection<Message> SendQueue = new BlockingCollection<Message>();
+        private BlockingCollection<Message> mainMessageQueue
+         = new BlockingCollection<Message>();
+        private Dictionary<string, Subscriber> subscribers = new Dictionary<string, Subscriber>();
 
         // The response from the remote device.  
         private static string response = string.Empty;
@@ -37,6 +26,8 @@ namespace CacheService.Communications
         private IPAddress ipAddress { get; set; }
         private IPEndPoint remoteEndPoint { get; set; }
         public Task clientTask { get; set; }
+
+        private CancellationTokenSource cts = new CancellationTokenSource();
 
         public AsynchronousClient(string ip, int port)
         {
@@ -50,50 +41,66 @@ namespace CacheService.Communications
             return Task.Factory.StartNew(StartClient);
         }
 
+        private void SendingTask(RemoteStateObject clientState)
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                try
+                {
+                    var message = mainMessageQueue.Take();
+                    SendData(clientState.socket, message.GetString());
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex.Message);
+                }
+            }
+        }
+
         private void StartClient()
         {
+            cts = new CancellationTokenSource();
             // Connect to a remote device.  
             try
             {
-                // Establish the remote endpoint for the socket.  
-                // The name of the
-                // remote device is "host.contoso.com".  
-                //IPHostEntry ipHostInfo = Dns.GetHostEntry("host.contoso.com");
-                //IPAddress ipAddress = ipHostInfo.AddressList[0];
-                //IPEndPoint remoteEP = new IPEndPoint(ipAddress, port);
-
                 // Create a TCP/IP socket.  
                 Socket client = new Socket(ipAddress.AddressFamily,
                     SocketType.Stream, ProtocolType.Tcp);
-                client.NoDelay = true;
+                client.NoDelay = true; // disable nagle algorithm
 
                 do
                 {
-                    Thread.Sleep(1000);
-                    // Connect to the remote endpoint.  
+                    connectDone.Reset();
                     client.BeginConnect(remoteEndPoint,
                         new AsyncCallback(ConnectCallback), client);
                     connectDone.WaitOne();
 
-                } while (!client.Connected);
+               } while (!client.Connected & !cts.Token.IsCancellationRequested);
+                
 
-                // Send test data to the remote device.  
-                Send(client, "This is a test<EOF>");
-                sendDone.WaitOne();
+                var clientState = new RemoteStateObject(client);
 
-                // Receive the response from the remote device.  
-                Receive(client);
+                // start sending task
+                Task sendTask = new Task(() => SendingTask(clientState), cts.Token);
+                sendTask.Start();
+
+                // Receive the response from the remote device.
+                // create new state object
+
+                receiveDone.Reset();
+                Receive(clientState);
                 receiveDone.WaitOne();
-
+                cts.Cancel();
                 // Write the response to the console.  
-                Console.WriteLine("Response received : {0}", response);
+                // Console.WriteLine("Response received : {0}", response);
 
                 // Release the socket.  
                 client.Shutdown(SocketShutdown.Both);
                 client.Close();
 
-
-
+                
+                StartClient();
+                
             }
 
             catch (Exception e)
@@ -104,9 +111,9 @@ namespace CacheService.Communications
 
         private void ConnectCallback(IAsyncResult ar)
         {
-
             // Retrieve the socket from the state object.  
-            Socket client = (Socket)ar.AsyncState;
+            var client = ar.AsyncState as Socket;
+            if (client == null) throw new ArgumentNullException(nameof(client));
             try
             {
                 // Complete the connection.  
@@ -124,15 +131,12 @@ namespace CacheService.Communications
             connectDone.Set();
         }
 
-        private void Receive(Socket client)
+        private void Receive(RemoteStateObject clientState)
         {
             try
             {
-                // Create the state object.  
-                RemoteStateObject clientState = new RemoteStateObject(client);
-
                 // Begin receiving the data from the remote device.  
-                client.BeginReceive(clientState.buffer, 0, RemoteStateObject.BufferSize, 0,
+                clientState.socket.BeginReceive(clientState.buffer, 0, RemoteStateObject.BufferSize, 0,
                     new AsyncCallback(ReceiveCallback), clientState);
             }
             catch (Exception e)
@@ -143,44 +147,66 @@ namespace CacheService.Communications
 
         private void ReceiveCallback(IAsyncResult ar)
         {
+            Console.WriteLine("started receiving");
+            string content = string.Empty;
+
+            // Retrieve the state object and the clientState socket  
+            // from the asynchronous state object.  
+            RemoteStateObject? state = ar.AsyncState as RemoteStateObject;
+            if (state == null) return;
+
+            Socket clientState = state.socket;
+            int bytesRead = 0;
+            // Read data from the client socket.
             try
             {
-                // Retrieve the state object and the client socket
-                // from the asynchronous state object.  
-                if (ar.AsyncState == null) return;
-                RemoteStateObject clientState = (RemoteStateObject)ar.AsyncState;
-                Socket client = clientState.socket;
-
-                // Read data from the remote device.  
-                int bytesRead = client.EndReceive(ar);
-
-                if (bytesRead > 0)
+                bytesRead = clientState.EndReceive(ar);
+                if (bytesRead <= 0)
                 {
-                    // There might be more data, so store the data received so far.  
-                    clientState.sb.Append(Encoding.ASCII.GetString(clientState.buffer, 0, bytesRead));
-
-                    // Get the rest of the data.  
-                    client.BeginReceive(clientState.buffer, 0, RemoteStateObject.BufferSize, 0,
-                        new AsyncCallback(ReceiveCallback), clientState);
-                }
-                else
-                {
-                    // All the data has arrived; put it in response.  
-                    if (clientState.sb.Length > 1)
-                    {
-                        response = clientState.sb.ToString();
-                    }
-                    // Signal that all bytes have been received.  
+                    Console.WriteLine("Disconnected, cancelling...");
                     receiveDone.Set();
                 }
             }
-            catch (Exception e)
+            catch (SocketException e)
             {
-                Console.WriteLine(e.ToString());
+                Console.WriteLine(e.Message);
+            }
+            if (bytesRead > 0)
+            {
+                // There  might be more data, so store the data received so far.  
+                state.sb.Append(Encoding.ASCII.GetString(
+                    state.buffer, 0, bytesRead));
+                Console.WriteLine("received: " + state.sb.ToString());
+                // Check for end-of-transmission tag. If it is not there, read
+                // more data.  
+                content = state.sb.ToString(); // 
+                if (content.IndexOf(">") > -1) // if the message contains an ending character
+                {
+                  
+                    #region Process received message
+                        var m = new Message(content); // create message from received data
+                        m.recipientId = state.id; // set recipient id 
+                    #endregion
+
+                    #region Notify subscribers
+                    foreach (var subscriber in subscribers)
+                        {
+                        subscriber.Value.Notify(m); // notify all subscribers
+                    }
+                    #endregion
+
+                    state.sb.Clear(); // clear the string builder for next message 
+                }
+                //else
+                {
+                    // receive again 
+                    clientState.BeginReceive(state.buffer, 0, RemoteStateObject.BufferSize, 0,
+                    new AsyncCallback(ReceiveCallback), state);
+                }
             }
         }
 
-        private void Send(Socket client, String data)
+        private void SendData(Socket client, String data)
         {
             // Convert the string data to byte data using ASCII encoding.  
             byte[] byteData = Encoding.ASCII.GetBytes(data);
@@ -195,7 +221,7 @@ namespace CacheService.Communications
             try
             {
                 // Retrieve the socket from the state object.  
-                Socket client = (Socket)ar.AsyncState;
+                Socket client = ar.AsyncState as Socket;
 
                 // Complete sending the data to the remote device.  
                 int bytesSent = client.EndSend(ar);
@@ -210,8 +236,7 @@ namespace CacheService.Communications
             }
         }
 
-        private Dictionary<string, Subscriber> subscribers = new Dictionary<string, Subscriber>();
-        private BlockingCollection<Message> mainSendMessageQueue = new();
+
         public Subscriber Subscribe(bool receiving)
         {
             if (subscribers == null) subscribers = new Dictionary<string, Subscriber>();
@@ -232,10 +257,9 @@ namespace CacheService.Communications
 
         public void Send(Message m, string? clientId = null)
         {
-            if (clientId == null) {
-                mainSendMessageQueue.Add(m);
-                return;
-            };
+            
+                mainMessageQueue.Add(m);
+                
 
         }
 

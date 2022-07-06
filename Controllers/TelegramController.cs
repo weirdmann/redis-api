@@ -24,20 +24,20 @@ namespace CacheService.Controllers
 
         // POST api/<ValuesController>
         
-        public class TelegramRequest
+        public class TelegramRequestDTO
         {
 
             public string node { get; set; } = "0000";
-            public string? type { get; set; } = "CMD";
-            public string? addr1 { get; set; }
-            public string? addr2 { get; set; }
+            public string type { get; set; } = "CMD";
+            public string addr1 { get; set; } = "0000";
+            public string addr2 { get; set; } = "0000";
             public int id { get; set; } = 0;
-            public string? barcode { get; set; }
-            public string? reserved { get; set; }
+            public string barcode { get; set; } = "";
+            public string reserved { get; set; } = " ";
 
         }
         [HttpPost]
-        public IActionResult Post([FromBody] TelegramRequest value)
+        public IActionResult Post([FromBody] TelegramRequestDTO value)
         {
 
             return Ok(new Telegram54()

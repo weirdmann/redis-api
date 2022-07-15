@@ -26,13 +26,18 @@ namespace CacheService.Communications
         private IPAddress ipAddress { get; set; }
         private IPEndPoint remoteEndPoint { get; set; }
         public Task clientTask { get; set; }
-
+        private Socket _socket;
         private CancellationTokenSource cts = new CancellationTokenSource();
 
         public AsynchronousClient(string ip, int port)
         {
             ipAddress = IPAddress.Parse(ip);
             remoteEndPoint = new IPEndPoint(ipAddress, port);
+
+            // create a socket for further reuse  
+            _socket = new(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+            _socket.NoDelay = true; // disable Nagle's algorithm
+
             clientTask = StartClientTask();
         }
 
@@ -59,26 +64,23 @@ namespace CacheService.Communications
 
         private void StartClient()
         {
+            // reset the cancellation token source
+            cts.Dispose();
             cts = new CancellationTokenSource();
             // Connect to a remote device.  
             try
             {
-                // Create a TCP/IP socket.  
-                Socket client = new Socket(ipAddress.AddressFamily,
-                    SocketType.Stream, ProtocolType.Tcp);
-                client.NoDelay = true; // disable nagle algorithm
-
                 do
                 {
                     connectDone.Reset();
-                    client.BeginConnect(remoteEndPoint,
-                        new AsyncCallback(ConnectCallback), client);
+                    _socket.BeginConnect(remoteEndPoint,
+                        new AsyncCallback(ConnectCallback), _socket);
                     connectDone.WaitOne();
 
-               } while (!client.Connected & !cts.Token.IsCancellationRequested);
+               } while (!_socket.Connected & !cts.Token.IsCancellationRequested);
                 
 
-                var clientState = new RemoteStateObject(client);
+                var clientState = new RemoteStateObject(_socket);
 
                 // start sending task
                 Task sendTask = new Task(() => SendingTask(clientState), cts.Token);
@@ -95,10 +97,9 @@ namespace CacheService.Communications
                 // Console.WriteLine("Response received : {0}", response);
 
                 // Release the socket.  
-                client.Shutdown(SocketShutdown.Both);
-                client.Close();
+                _socket.Shutdown(SocketShutdown.Both);
+                _socket.Disconnect(true);
 
-                
                 StartClient();
                 
             }

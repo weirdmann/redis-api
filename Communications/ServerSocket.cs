@@ -30,7 +30,8 @@ namespace CacheService.Communications
 
         public void Notify(Message m) 
         {
-            if (received == null | unsubscribed) return; // subscriber doesn't want to receive
+            if (received is null) return; // subscriber doesn't want to receive
+            if (unsubscribed) return; // subscriber unsubscribed
             received.Add(m);
             Console.WriteLine("Notified:" + m.GetString());
         }
@@ -53,7 +54,7 @@ namespace CacheService.Communications
                         callback(m);
                     }
                 }
-                catch (OperationCanceledException e)
+                catch (OperationCanceledException)
                 {
 
                 }

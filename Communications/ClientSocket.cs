@@ -26,6 +26,7 @@ namespace CacheService.Communications
         private IPAddress ipAddress { get; set; }
         private IPEndPoint remoteEndPoint { get; set; }
         public Task clientTask { get; set; }
+        private Task? sendTask { get; set; }
         private Socket _socket;
         private CancellationTokenSource cts = new CancellationTokenSource();
 
@@ -36,6 +37,7 @@ namespace CacheService.Communications
 
             // create a socket for further reuse  
             _socket = new(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+            _socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.DontLinger, true);
             _socket.NoDelay = true; // disable Nagle's algorithm
 
             clientTask = StartClientTask();
@@ -52,7 +54,7 @@ namespace CacheService.Communications
             {
                 try
                 {
-                    var message = mainMessageQueue.Take();
+                    var message = mainMessageQueue.Take(cts.Token);
                     SendData(clientState.socket, message.GetString());
                 }
                 catch (Exception ex)
@@ -62,7 +64,7 @@ namespace CacheService.Communications
             }
         }
 
-        private void StartClient()
+        private  void StartClient()
         {
             // reset the cancellation token source
             cts.Dispose();
@@ -77,31 +79,32 @@ namespace CacheService.Communications
                         new AsyncCallback(ConnectCallback), _socket);
                     connectDone.WaitOne();
 
-               } while (!_socket.Connected & !cts.Token.IsCancellationRequested);
-                
+                } while (!_socket.Connected & !cts.Token.IsCancellationRequested);
+
 
                 var clientState = new RemoteStateObject(_socket);
 
-                // start sending task
-                Task sendTask = new Task(() => SendingTask(clientState), cts.Token);
-                sendTask.Start();
+
+                if (sendTask is not null) sendTask.Dispose();
+                sendTask = Task.Factory.StartNew(() => SendingTask(clientState), cts.Token);
+                // sendTask = new Task(() => SendingTask(clientState), cts.Token);
+                // sendTask.Start();
 
                 // Receive the response from the remote device.
                 // create new state object
 
                 receiveDone.Reset();
                 Receive(clientState);
-                receiveDone.WaitOne();
-                cts.Cancel();
-                // Write the response to the console.  
-                // Console.WriteLine("Response received : {0}", response);
+                receiveDone.WaitOne(); // wait for receiving task to finish
+                cts.Cancel(); // cancel all tasks
+                sendTask.Wait(); // wait for sending task to finish
 
                 // Release the socket.  
                 _socket.Shutdown(SocketShutdown.Both);
                 _socket.Disconnect(true);
 
                 StartClient();
-                
+
             }
 
             catch (Exception e)
@@ -126,7 +129,7 @@ namespace CacheService.Communications
                 return;
             }
             Console.WriteLine("Socket connected to {0}",
-                client.RemoteEndPoint.ToString());
+                client.RemoteEndPoint?.ToString());
 
             // Signal that the connection has been made.  
             connectDone.Set();
@@ -148,7 +151,6 @@ namespace CacheService.Communications
 
         private void ReceiveCallback(IAsyncResult ar)
         {
-            Console.WriteLine("started receiving");
             string content = string.Empty;
 
             // Retrieve the state object and the clientState socket  
@@ -181,32 +183,32 @@ namespace CacheService.Communications
                 // Check for end-of-transmission tag. If it is not there, read
                 // more data.  
                 content = state.sb.ToString(); // 
+                
                 if (content.IndexOf(">") > -1) // if the message contains an ending character
                 {
-                  
-                    #region Process received message
-                        var m = new Message(content); // create message from received data
-                        m.recipientId = state.id; // set recipient id 
-                    #endregion
+                    
+                    // Process received message
+                    var m = new Message(content); // create message from received data
+                    m.recipientId = state.id; // set recipient id 
+                    
 
-                    #region Notify subscribers
+                    // Notify subscribers
                     foreach (var subscriber in subscribers)
-                        {
+                    {
                         subscriber.Value.Notify(m); // notify all subscribers
                     }
-                    #endregion
+                    
 
                     state.sb.Clear(); // clear the string builder for next message 
                 }
-                //else
-                {
-                    // receive again 
-                    clientState.BeginReceive(state.buffer, 0, RemoteStateObject.BufferSize, 0,
-                    new AsyncCallback(ReceiveCallback), state);
-                }
+
+                // receive again 
+                clientState.BeginReceive(state.buffer, 0, RemoteStateObject.BufferSize, 0,
+                new AsyncCallback(ReceiveCallback), state);
+
             }
         }
-
+        //private byte[]? byteData;
         private void SendData(Socket client, String data)
         {
             // Convert the string data to byte data using ASCII encoding.  
@@ -222,10 +224,10 @@ namespace CacheService.Communications
             try
             {
                 // Retrieve the socket from the state object.  
-                Socket client = ar.AsyncState as Socket;
+                if (ar.AsyncState  is null) throw new ArgumentNullException(nameof(ar.AsyncState));
 
                 // Complete sending the data to the remote device.  
-                int bytesSent = client.EndSend(ar);
+                int bytesSent = ((Socket)ar.AsyncState).EndSend(ar);
                 Console.WriteLine("Sent {0} bytes to server.", bytesSent);
 
                 // Signal that all bytes have been sent.  
@@ -249,8 +251,8 @@ namespace CacheService.Communications
 
         public void UnSubscribe(Subscriber s)
         {
-            if (s == null) throw new ArgumentNullException(nameof(s));
-            if (subscribers == null) return;
+            if (s is null) throw new ArgumentNullException(nameof(s));
+            if (subscribers is null) return;
 
             subscribers[s.guid].unsubscribed = true;
 
@@ -258,10 +260,7 @@ namespace CacheService.Communications
 
         public void Send(Message m, string? clientId = null)
         {
-            
-                mainMessageQueue.Add(m);
-                
-
+            mainMessageQueue.Add(m);
         }
 
         public void Send(Message[] m, string? clientId = null)

@@ -38,6 +38,7 @@ namespace CacheService.Communications
             // create a socket for further reuse  
             _socket = new(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
             _socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.DontLinger, true);
+            //_socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.DontFragment, true);
             _socket.NoDelay = true; // disable Nagle's algorithm
 
             clientTask = StartClientTask();
@@ -75,6 +76,8 @@ namespace CacheService.Communications
                 do
                 {
                     connectDone.Reset();
+                    _socket.Dispose();
+                    _socket = new(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
                     _socket.BeginConnect(remoteEndPoint,
                         new AsyncCallback(ConnectCallback), _socket);
                     connectDone.WaitOne();

@@ -56,10 +56,8 @@ namespace CacheService.Models
 
         public TelegramBuilder Build()
         {
-            foreach (Field field in fields)
-            {
-                field.Apply(ByteArray);
-            }
+            for (int i = 0; i < fields.Count; i++) fields[i].Apply(ByteArray);
+            
             AddPrefixSuffix();
             return this;
         }
@@ -74,6 +72,10 @@ namespace CacheService.Models
             return Encoding.ASCII.GetString(ByteArray);
         }
 
+        public override string ToString()
+        {
+            return GetString();
+        }
     }
     public class Telegram54 : TelegramBuilder
     {

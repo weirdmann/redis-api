@@ -189,14 +189,12 @@ namespace CacheService.Communications
 
                 while (true)
                 {
-                    // Set the event to nonsignaled state.  
+                    // Set the event to non-signaled state.  
                     clientAccepted.Reset();
 
                     // Start an asynchronous socket to listen for connections.  
                     Console.WriteLine("Waiting for a connection..." + localEndPoint.ToString() + "/" + ipAddress.ToString());
-                    listener.BeginAccept(
-                        new AsyncCallback(AcceptNewClientCallback),
-                        listener);
+                    listener.BeginAccept( new AsyncCallback(AcceptNewClientCallback), listener);
 
                     // Wait until a connection is made before continuing.  
                     clientAccepted.WaitOne();
@@ -226,7 +224,9 @@ namespace CacheService.Communications
             // Create the state object.  
             RemoteStateObject newClientState = new RemoteStateObject(listener.EndAccept(ar));
             clientDictionary[newClientState.id] = newClientState;
+
             Console.WriteLine("Started receiving from client id: " + newClientState.id);
+
             newClientState.sendTask = Task.Factory.StartNew(() => QueuedSenderThread(newClientState));
             newClientState.socket.BeginReceive(newClientState.buffer, 0, RemoteStateObject.BufferSize, 0,
                 new AsyncCallback(ReceiveCallback), newClientState);
@@ -239,7 +239,7 @@ namespace CacheService.Communications
             // Retrieve the state object and the clientState socket  
             // from the asynchronous state object.  
             RemoteStateObject? state = ar.AsyncState as RemoteStateObject;
-            if (state == null) return;
+            if (state is null) throw new SocketException();
 
             Socket clientState = state.socket;
             int bytesRead = 0;
@@ -364,7 +364,6 @@ namespace CacheService.Communications
             if (subscribers == null) return;
 
             subscribers[s.guid].unsubscribed = true;
-
         }
 
         public void Send(Message m, string? clientId = null)

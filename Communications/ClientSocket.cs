@@ -68,8 +68,10 @@ namespace CacheService.Communications
         private  void StartClient()
         {
             // reset the cancellation token source
-            cts.Dispose();
-            cts = new CancellationTokenSource();
+            if (cts.IsCancellationRequested) {
+                cts.Dispose();
+                cts = new CancellationTokenSource();
+            }
             // Connect to a remote device.  
             try
             {
@@ -90,8 +92,6 @@ namespace CacheService.Communications
 
                 if (sendTask is not null) sendTask.Dispose();
                 sendTask = Task.Factory.StartNew(() => SendingTask(clientState), cts.Token);
-                // sendTask = new Task(() => SendingTask(clientState), cts.Token);
-                // sendTask.Start();
 
                 // Receive the response from the remote device.
                 // create new state object

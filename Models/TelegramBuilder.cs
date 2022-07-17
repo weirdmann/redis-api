@@ -79,9 +79,18 @@ namespace CacheService.Models
     }
     public class Telegram54 : TelegramBuilder
     {
-        private byte[] template;
-        private string node = String.Empty;
-        
+        //private byte[]? template;
+        private string? _node = null;
+        private TelegramType? _type = null;
+        private string? _typeString = null;
+        private int _sequenceNo = int.MinValue;
+        private string? _addr1 = null;
+        private string? _addr2 = null;
+        private string? _barcode = null;
+        private string? _spare = null;
+
+        private readonly Telegram54? _parent;
+        public Telegram54? Parent { get { return _parent; } } 
         public enum TelegramType : short
         {
             SCN,
@@ -89,13 +98,34 @@ namespace CacheService.Models
             SOK,
             SER
         }
+        public Dictionary<TelegramType?, string> TelegramTypeStrings = new()
+        {
+            [null] = "    ",
+            [TelegramType.SCN] = "SCN ",
+            [TelegramType.CMD] = "CMD ",
+            [TelegramType.SOK] = "SOK ",
+            [TelegramType.SER] = "SER "
+        };
 
         public Telegram54()
         {
-            template = new byte[54];
-            Array.Fill(template, (byte)' ');
-            ByteArray = template;
+            CreateTemplate();
         }
+        public Telegram54(Telegram54 parent)
+        {
+            this._parent = parent;
+            CreateTemplate();
+        }
+
+        public void CreateTemplate()
+        {
+            if (_parent is not null) { ByteArray = _parent.ByteArray; return; }
+
+            ByteArray = new byte[54];
+            Array.Fill(ByteArray, (byte)' ');
+        }
+
+        
 
         override protected void AddPrefixSuffix()
         {
@@ -106,7 +136,14 @@ namespace CacheService.Models
         public Telegram54 Node(string value)
         {
             AddField(value.PadLeft(4, '0'), 1, 4);
+            _node = value;
             return this;
+        }
+
+        public Telegram54 Type(TelegramType value)
+        {
+            _type = value;
+            return Type(TelegramTypeStrings[_type]);
         }
 
         public Telegram54 Type(string value)

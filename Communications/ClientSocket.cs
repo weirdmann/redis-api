@@ -22,12 +22,12 @@ namespace CacheService.Communications
 
         // The response from the remote device.  
         private static string response = string.Empty;
-
+        private string _endString = ">";
         private IPAddress ipAddress { get; set; }
         private IPEndPoint remoteEndPoint { get; set; }
         public Task clientTask { get; set; }
         private Task? sendTask { get; set; }
-        private Socket _socket;
+        private Socket? _socket;
         private CancellationTokenSource cts = new CancellationTokenSource();
 
         public AsynchronousClient(string ip, int port)
@@ -35,13 +35,17 @@ namespace CacheService.Communications
             ipAddress = IPAddress.Parse(ip);
             remoteEndPoint = new IPEndPoint(ipAddress, port);
 
-            // create a socket for further reuse  
-            _socket = new(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-            _socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.DontLinger, true);
-            //_socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.DontFragment, true);
-            _socket.NoDelay = true; // disable Nagle's algorithm
-
             clientTask = StartClientTask();
+        }
+
+        public Socket CreateNewSocket() {
+            Socket s = new(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+
+            s.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.DontLinger, true);
+            //_socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.DontFragment, true);
+            s.NoDelay = true; // disable Nagle's algorithm
+
+            return s;
         }
 
         public Task StartClientTask()
@@ -65,7 +69,7 @@ namespace CacheService.Communications
             }
         }
 
-        private  void StartClient()
+        private void StartClient()
         {
             // reset the cancellation token source
             if (cts.IsCancellationRequested) {
@@ -77,11 +81,12 @@ namespace CacheService.Communications
             {
                 do
                 {
+                    if (_socket is not null) _socket.Close();
+
+                    _socket = CreateNewSocket();
+
                     connectDone.Reset();
-                    _socket.Dispose();
-                    _socket = new(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-                    _socket.BeginConnect(remoteEndPoint,
-                        new AsyncCallback(ConnectCallback), _socket);
+                    _socket.BeginConnect(remoteEndPoint, new AsyncCallback(ConnectCallback), _socket);
                     connectDone.WaitOne();
 
                 } while (!_socket.Connected & !cts.Token.IsCancellationRequested);
@@ -93,12 +98,18 @@ namespace CacheService.Communications
                 if (sendTask is not null) sendTask.Dispose();
                 sendTask = Task.Factory.StartNew(() => SendingTask(clientState), cts.Token);
 
+
                 // Receive the response from the remote device.
                 // create new state object
+
 
                 receiveDone.Reset();
                 Receive(clientState);
                 receiveDone.WaitOne(); // wait for receiving task to finish
+
+
+                // if the receiving task has finished, the connection must have been ended
+                // (disconnected or interrupted by some error)
                 cts.Cancel(); // cancel all tasks
                 sendTask.Wait(); // wait for sending task to finish
 
@@ -180,14 +191,15 @@ namespace CacheService.Communications
             if (bytesRead > 0)
             {
                 // There  might be more data, so store the data received so far.  
-                state.sb.Append(Encoding.ASCII.GetString(
-                    state.buffer, 0, bytesRead));
+                state.sb.Append(Encoding.ASCII.GetString(state.buffer, 0, bytesRead));
                 Console.WriteLine("received: " + state.sb.ToString());
                 // Check for end-of-transmission tag. If it is not there, read
                 // more data.  
                 content = state.sb.ToString(); // 
                 
-                if (content.IndexOf(">") > -1) // if the message contains an ending character
+
+
+                if (content.IndexOf(_endString) > -1) // if the message contains an ending character
                 {
                     
                     // Process received message
@@ -211,11 +223,11 @@ namespace CacheService.Communications
 
             }
         }
-        //private byte[]? byteData;
+        private byte[]? byteData;
         private void SendData(Socket client, String data)
         {
             // Convert the string data to byte data using ASCII encoding.  
-            byte[] byteData = Encoding.ASCII.GetBytes(data);
+            byteData = Encoding.ASCII.GetBytes(data);
 
             // Begin sending the data to the remote device.  
             client.BeginSend(byteData, 0, byteData.Length, 0,

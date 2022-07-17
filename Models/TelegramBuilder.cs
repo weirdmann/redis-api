@@ -6,7 +6,7 @@ namespace CacheService.Models
 {
     public class TelegramBuilder
     {
-        private class Field
+        public class Field
         {
             protected byte[] ByteArray { get; set; }
             public uint dst_index { get; set; } = uint.MinValue;
@@ -16,39 +16,42 @@ namespace CacheService.Models
             {
                 if (value.Length < field_length)
                 {
-                    value = value.Remove((int) field_length);
-                } 
+                    value = value.Remove((int)field_length);
+                }
 
                 ByteArray = Encoding.ASCII.GetBytes(value.PadRight((int)field_length, ' '));
                 dst_index = from_index;
                 length = field_length;
             }
 
-            public byte[]? Apply(byte[] arr)
+            public byte[]? ApplyTo(byte[] arr)
             {
                 if (arr == null) return arr;
                 if (dst_index > arr.Length) return arr;
-                if (dst_index + length > arr.Length) length = (uint) arr.Length - dst_index;
+                if (dst_index + length > arr.Length) length = (uint)arr.Length - dst_index;
 
 
                 Array.Copy(ByteArray, 0, arr, dst_index, length);
                 return arr;
             }
-
+            override public string ToString()
+            {
+                return Encoding.ASCII.GetString(ByteArray);
+            }
         }
 
         protected byte[] ByteArray { get; set; } = new byte[54];
-        private List<Field> fields = new List<Field>();
+        public Dictionary<string, Field> Fields = new();
 
         public TelegramBuilder()
         {
 
         }
 
-        public TelegramBuilder AddField(string value, uint from_index, uint field_length)
+        public TelegramBuilder AddField(string name, string value, uint from_index, uint field_length)
         {
             if (string.IsNullOrEmpty(value)) return this;
-            fields.Add(new Field(value, from_index, field_length));
+            Fields.Add(name, new Field(value, from_index, field_length));
             return this;
         }
 
@@ -56,8 +59,9 @@ namespace CacheService.Models
 
         public TelegramBuilder Build()
         {
-            for (int i = 0; i < fields.Count; i++) fields[i].Apply(ByteArray);
-            
+            foreach (var field in Fields)
+                field.Value.ApplyTo(ByteArray);
+
             AddPrefixSuffix();
             return this;
         }
@@ -79,32 +83,29 @@ namespace CacheService.Models
     }
     public class Telegram54 : TelegramBuilder
     {
-        //private byte[]? template;
-        private string? _node = null;
-        private TelegramType? _type = null;
-        private string? _typeString = null;
-        private int _sequenceNo = int.MinValue;
-        private string? _addr1 = null;
-        private string? _addr2 = null;
-        private string? _barcode = null;
-        private string? _spare = null;
-
+        private TelegramType _type = TelegramType.UNKNOWN;
+        //public TelegramType Type { get {return _type;} }
         private readonly Telegram54? _parent;
-        public Telegram54? Parent { get { return _parent; } } 
+        public Telegram54? Parent { get { return _parent; } }
         public enum TelegramType : short
         {
+            UNKNOWN,
             SCN,
             CMD,
             SOK,
-            SER
+            SER,
+            WDG,
+            WDGA
         }
-        public Dictionary<TelegramType?, string> TelegramTypeStrings = new()
+        public static readonly Dictionary<TelegramType, string> TelegramTypeStrings = new()
         {
-            [null] = "    ",
+            [TelegramType.UNKNOWN] = "    ",
             [TelegramType.SCN] = "SCN ",
             [TelegramType.CMD] = "CMD ",
             [TelegramType.SOK] = "SOK ",
-            [TelegramType.SER] = "SER "
+            [TelegramType.SER] = "SER ",
+            [TelegramType.WDG] = "WDG ",
+            [TelegramType.WDGA] = "WDGA"
         };
 
         public Telegram54()
@@ -125,18 +126,18 @@ namespace CacheService.Models
             Array.Fill(ByteArray, (byte)' ');
         }
 
-        
 
+        public static readonly byte prefix = (byte)'<';
+        public static readonly byte suffix = (byte)'>';
         override protected void AddPrefixSuffix()
         {
-            ByteArray[0] = (byte)'<';
-            ByteArray[53] = (byte)'>';
+            ByteArray[0] = prefix;
+            ByteArray[53] = suffix;
         }
 
         public Telegram54 Node(string value)
         {
-            AddField(value.PadLeft(4, '0'), 1, 4);
-            _node = value;
+            AddField("node", value.PadLeft(4, '0'), 1, 4);
             return this;
         }
 
@@ -148,32 +149,44 @@ namespace CacheService.Models
 
         public Telegram54 Type(string value)
         {
-            AddField(value.PadRight(4, ' '), 5, 4);
+            AddField("type", value.PadRight(4, ' '), 5, 4);
             return this;
         }
 
         public Telegram54 SequenceNo(int value)
         {
-            AddField(value.ToString().PadLeft(3, '0'), 9, 3);
+            AddField("sequenceNo", value.ToString().PadLeft(3, '0'), 9, 3);
             return this;
         }
 
         public Telegram54 Addr1(string value)
         {
-            AddField(value.PadRight(4, ' ') , 12, 4);
+            AddField("addr1", value.PadRight(4, ' '), 12, 4);
             return this;
         }
 
         public Telegram54 Addr2(string value)
         {
-            AddField(value.PadRight(4, ' '), 16, 4);
+            AddField("addr2", value.PadRight(4, ' '), 16, 4);
             return this;
         }
 
         public Telegram54 Barcode(string value)
         {
-            AddField(value.PadRight(32, ' '), 20, 32);
+            AddField("barcode", value.PadRight(32, ' '), 20, 32);
             return this;
+        }
+        
+        public static Telegram54? Parse(string telegram)
+        {
+            if (telegram.Length < 54) return null;
+            if (telegram[0] != prefix) return null;
+            if (telegram[53] != suffix) return null;
+            
+            var t = new Telegram54();
+            t.Type(TelegramType.WDG);
+            t.ByteArray = Encoding.ASCII.GetBytes(telegram);
+            return t;
         }
     }
 }

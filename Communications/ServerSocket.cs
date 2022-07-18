@@ -24,7 +24,6 @@ namespace CacheService.Communications
         
         public Subscriber(ISender parent)
         {
-            Console.WriteLine("new subscriber");
             this.parent = parent ?? throw new ArgumentNullException(nameof(parent));
         }
 
@@ -33,10 +32,10 @@ namespace CacheService.Communications
             if (received is null) return; // subscriber doesn't want to receive
             if (unsubscribed) return; // subscriber unsubscribed
             received.Add(m);
-            Console.WriteLine("Notified:" + m.GetString());
+            //Console.WriteLine("Notified:" + m.GetString());
         }
 
-        public void StartReadingMessages(Action<Message> callback)
+        public void StartReadingMessages(Action<Subscriber, Message> callback)
         {
             received = new BlockingCollection<Message>();
             Task.Factory.StartNew(() =>
@@ -48,10 +47,10 @@ namespace CacheService.Communications
                     Message m;
                     while (!cts.Token.IsCancellationRequested)
                     {
-                        Console.WriteLine("Taking...");
+                        //Console.WriteLine("Taking...");
                         m = received.Take(cts.Token);
-                        Console.WriteLine("Taken: " + m.GetString());
-                        callback(m);
+                        //Console.WriteLine("Taken: " + m.GetString());
+                        callback.DynamicInvoke(this, m);
                     }
                 }
                 catch (OperationCanceledException)
@@ -76,7 +75,7 @@ namespace CacheService.Communications
         public byte[] bytes = new byte[1];
         public DateTime timestamp;
         public string recipientId = Guid.NewGuid().ToString();
-
+        public string transactionId = Guid.NewGuid().ToString();
         public Message(byte[] bytes)
         {
             SetContent(bytes);

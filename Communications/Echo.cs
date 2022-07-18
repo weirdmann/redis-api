@@ -8,9 +8,9 @@ namespace CacheService.Communications
         public Echo(ISender parent)
         {
             subscriber = parent.Subscribe(true);
-            subscriber.StartReadingMessages((Message m) =>
+            subscriber.StartReadingMessages((Subscriber s, Message m) =>
             {
-                subscriber.Send(m, m.recipientId);
+                s.Send(m, m.recipientId);
             });
         }
     }

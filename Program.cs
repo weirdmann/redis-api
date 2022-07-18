@@ -1,3 +1,4 @@
+global using Serilog;
 using CacheService.Data;
 using CacheService.Communications;
 using CacheService.Models;
@@ -5,7 +6,13 @@ using StackExchange.Redis;
 using System.Text;
 
 
+using var log = new LoggerConfiguration()
+    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss:fff} {Level:u4}] {Message:lj}{NewLine}{Exception}",
+    theme: Serilog.Sinks.SystemConsole.Themes.AnsiConsoleTheme.Code)
+    .CreateLogger();
 
+Log.Logger = log;
+Log.Information("The global logger has been configured");
 
 //<1234CMD 3450000000FK132456                          >
 //000000000011111111112222222222333333333344444444445555
@@ -80,4 +87,4 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
-
+Log.CloseAndFlush();

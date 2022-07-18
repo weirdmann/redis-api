@@ -142,8 +142,7 @@ namespace CacheService.Communications
                 connectDone.Set();
                 return;
             }
-            Console.WriteLine("Socket connected to {0}",
-                client.RemoteEndPoint?.ToString());
+            Log.Information("Socket connected to {0}", client.RemoteEndPoint?.ToString());
 
             // Signal that the connection has been made.  
             connectDone.Set();
@@ -180,7 +179,7 @@ namespace CacheService.Communications
                 bytesRead = clientState.EndReceive(ar);
                 if (bytesRead <= 0)
                 {
-                    Console.WriteLine("Disconnected, cancelling...");
+                    Log.Warning("{0} Disconnected, cancelling...", clientState.RemoteEndPoint);
                     receiveDone.Set();
                 }
             }
@@ -192,7 +191,7 @@ namespace CacheService.Communications
             {
                 // There  might be more data, so store the data received so far.  
                 state.sb.Append(Encoding.ASCII.GetString(state.buffer, 0, bytesRead));
-                Console.WriteLine("received: " + state.sb.ToString());
+                
                 // Check for end-of-transmission tag. If it is not there, read
                 // more data.  
                 content = state.sb.ToString(); // 
@@ -205,8 +204,8 @@ namespace CacheService.Communications
                     // Process received message
                     var m = new Message(content); // create message from received data
                     m.recipientId = state.id; // set recipient id 
-                    
 
+                    Log.Information("{0} \u001b[30m\u001b[43m >RCV> \u001b[0m '{2}' ({1} bytes)", state.socket.RemoteEndPoint, content.Length, content);
                     // Notify subscribers
                     foreach (var subscriber in subscribers)
                     {
@@ -232,6 +231,7 @@ namespace CacheService.Communications
             // Begin sending the data to the remote device.  
             client.BeginSend(byteData, 0, byteData.Length, 0,
                 new AsyncCallback(SendCallback), client);
+            Log.Information("{0} \u001b[30m\u001b[42m <SNT< \u001b[0m '{2}' ({1} bytes)", client.RemoteEndPoint, data.Length, data);
         }
 
         private void SendCallback(IAsyncResult ar)
@@ -242,8 +242,9 @@ namespace CacheService.Communications
                 if (ar.AsyncState  is null) throw new ArgumentNullException(nameof(ar.AsyncState));
 
                 // Complete sending the data to the remote device.  
-                int bytesSent = ((Socket)ar.AsyncState).EndSend(ar);
-                Console.WriteLine("Sent {0} bytes to server.", bytesSent);
+                //int bytesSent =
+                    ((Socket)ar.AsyncState).EndSend(ar);
+                //Console.WriteLine("Sent {0} bytes to server.", bytesSent);
 
                 // Signal that all bytes have been sent.  
                 sendDone.Set();

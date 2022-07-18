@@ -96,6 +96,12 @@ namespace CacheService.Communications
             recipientId = m.recipientId;
         }
 
+        public Message(Message m, string str)
+        {
+            this.bytes = Encoding.ASCII.GetBytes(str);
+            recipientId = m.recipientId;
+        }
+
         public void SetContent(string src)
         {
             bytes = Encoding.ASCII.GetBytes(src);

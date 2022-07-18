@@ -50,4 +50,53 @@ namespace CacheService
             _watchdogResponder.HandleTelegram(telegram).DynamicInvoke(s, message);
         }
     }
+
+
+
+
+    class LabelSender
+    {
+        private Subscriber? labelerSubscriber;
+        private Subscriber? commandSubscriber;
+        public string[] labelPaths;
+        public LabelSender()
+        {
+            labelPaths = Directory.GetFiles(@"X:\Projekty\Euronet\etykiety");
+        }
+
+        public LabelSender AssignCommandSender(ISender sender)
+        {
+            commandSubscriber = sender.Subscribe(true);
+            commandSubscriber.StartReadingMessages(OnCommandMessage);
+            return this;
+        }
+
+        public LabelSender AssignLabelerSender(ISender sender)
+        {
+            labelerSubscriber = sender.Subscribe(false);
+            return this;
+        }
+
+        private void OnCommandMessage(Subscriber s, Message m)
+        {
+            if (m.GetString().Equals("<label>", StringComparison.InvariantCultureIgnoreCase)) {
+                var label = GetLabel();
+                s.Send(new Message(m, "SENT: " + label.Key));
+                labelerSubscriber.Send(new Message(label.Value));
+            }
+        }
+
+        private KeyValuePair<string, byte[]> GetLabel()
+        {
+            foreach (var filepath in labelPaths)
+            {
+                Log.Information("Label found: {0}", filepath);
+            }
+            var labelpath = labelPaths.Where(x => x.Contains("DHL")).First();
+            var labelbytes = File.ReadAllBytes(labelpath);
+
+            return new KeyValuePair<string, byte[]>(labelpath, labelbytes);
+        }
+        
+    }
 }

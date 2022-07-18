@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Text;
 using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 
 namespace CacheService.Communications
 {
@@ -42,6 +43,23 @@ namespace CacheService.Communications
             Socket s = new(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
 
             s.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.DontLinger, true);
+            s.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.SendTimeout, 1000);
+            s.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveTimeout, 1000);
+            s.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, 1);
+            s.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveInterval, 5000);
+            s.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveRetryCount, 5);
+            s.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveTime, 1000);
+
+            int size = Marshal.SizeOf((uint)0);
+
+            byte[] keepAlive = new byte[size * 3];
+
+            Buffer.BlockCopy(BitConverter.GetBytes((uint)1), 0, keepAlive, 0, size);
+            Buffer.BlockCopy(BitConverter.GetBytes((uint)5000), 0, keepAlive, size, size);
+            Buffer.BlockCopy(BitConverter.GetBytes((uint)5000), 0, keepAlive, size * 2, size);
+
+            s.IOControl(IOControlCode.KeepAliveValues, keepAlive, null);
+
             //_socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.DontFragment, true);
             s.NoDelay = true; // disable Nagle's algorithm
 
@@ -64,7 +82,9 @@ namespace CacheService.Communications
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine(ex.Message);
+                    Log.Error(ex, "");
+                    receiveDone.Set();
+                    cts.Cancel();
                 }
             }
         }
@@ -77,14 +97,17 @@ namespace CacheService.Communications
                 cts = new CancellationTokenSource();
             }
             // Connect to a remote device.  
+            
             try
             {
+                if (_socket is not null) _socket.Close();
+                _socket = CreateNewSocket();
+
+                Log.Information("{0} Connecting", remoteEndPoint);
+
                 do
                 {
-                    if (_socket is not null) _socket.Close();
-
-                    _socket = CreateNewSocket();
-
+                    
                     connectDone.Reset();
                     _socket.BeginConnect(remoteEndPoint, new AsyncCallback(ConnectCallback), _socket);
                     connectDone.WaitOne();
@@ -123,7 +146,8 @@ namespace CacheService.Communications
 
             catch (Exception e)
             {
-                Console.WriteLine(e.ToString());
+                Log.Error(e.ToString());
+                cts.Cancel();
             }
         }
 
@@ -158,7 +182,8 @@ namespace CacheService.Communications
             }
             catch (Exception e)
             {
-                Console.WriteLine(e.ToString());
+                Log.Error(e.ToString());
+                cts.Cancel();
             }
         }
 
@@ -185,7 +210,8 @@ namespace CacheService.Communications
             }
             catch (SocketException e)
             {
-                Console.WriteLine(e.Message);
+                Log.Error(e.Message);
+                cts.Cancel();
             }
             if (bytesRead > 0)
             {
@@ -217,6 +243,8 @@ namespace CacheService.Communications
                 }
 
                 // receive again 
+                if (cts.IsCancellationRequested) return;
+
                 clientState.BeginReceive(state.buffer, 0, RemoteStateObject.BufferSize, 0,
                 new AsyncCallback(ReceiveCallback), state);
 
@@ -227,12 +255,18 @@ namespace CacheService.Communications
         {
             // Convert the string data to byte data using ASCII encoding.  
             byteData = Encoding.ASCII.GetBytes(data);
-
-            // Begin sending the data to the remote device.  
-            client.BeginSend(byteData, 0, byteData.Length, 0,
-                new AsyncCallback(SendCallback), client);
-            Log.Information("{0} \u001b[30m\u001b[42m <SNT< \u001b[0m '{2}' ({1} bytes)", client.RemoteEndPoint, data.Length, data);
-        }
+            try
+            {
+                // Begin sending the data to the remote device.  
+                client.BeginSend(byteData, 0, byteData.Length, 0,
+                    new AsyncCallback(SendCallback), client);
+                Log.Information("{0} \u001b[30m\u001b[42m <SNT< \u001b[0m '{2}' ({1} bytes)", client.RemoteEndPoint, data.Length, data);
+            }
+            catch (SocketException)
+            {
+                cts.Cancel();
+            }
+           }
 
         private void SendCallback(IAsyncResult ar)
         {
@@ -249,9 +283,9 @@ namespace CacheService.Communications
                 // Signal that all bytes have been sent.  
                 sendDone.Set();
             }
-            catch (Exception e)
+            catch (Exception)
             {
-                Console.WriteLine(e.ToString());
+                cts.Cancel();
             }
         }
 

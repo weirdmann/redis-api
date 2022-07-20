@@ -81,31 +81,98 @@ namespace CacheService.Models
             return GetString();
         }
     }
+
+    public enum Type54 : short
+    {
+        INVALID = -1,
+        UNKNOWN = 0,
+        SCN,
+        CMD,
+        SOK,
+        SER,
+        WDG,
+        WDGA
+    }
+
     public class Telegram54 : TelegramBuilder
     {
-        private TelegramType _type = TelegramType.UNKNOWN;
-        //public TelegramType Type { get {return _type;} }
+        private Type54? _type;
+        private string? _node;
+        private int? _id;
+        private string? _addr1;
+        private string? _addr2;
+        private string? _barcode;
+        private string? _spare;
+        public string NodeValue
+        {
+            get
+            {
+                if (_node is null)
+                {
+                    _node = Parse.GetNode(this) ?? string.Empty;
+                }
+                return _node;
+            }
+        }
+        public Type54? TypeValue
+        {
+            get
+            {
+                if (_type is null)
+                {
+                    _type = Parse.GetType(this);
+                }
+                return _type;
+            }
+        }
+        public int SequenceNoValue
+        {
+            get
+            {
+                if (_id is null)
+                {
+                    _id = Parse.GetSequenceNo(this);
+                }
+                return _id ?? 0;
+            }
+        }
+        
+        public string Addr1Value
+        {
+            get
+            {
+                if (_addr1 is null)
+                {
+                    _addr1 = Parse.GetAddr1(this) ?? string.Empty;
+                }
+                return _addr1;
+            }
+        }
+
+        public string Addr2Value
+        {
+            get
+            {
+                if (_addr2 is null)
+                {
+                    _addr2 = Parse.GetAddr2(this) ?? string.Empty;
+                }
+                return _addr2;
+            }
+        }
+        
         private readonly Telegram54? _parent;
         public Telegram54? Parent { get { return _parent; } }
-        public enum TelegramType : short
+
+        public static readonly Dictionary<Type54, string> TelegramTypeStrings = new()
         {
-            UNKNOWN,
-            SCN,
-            CMD,
-            SOK,
-            SER,
-            WDG,
-            WDGA
-        }
-        public static readonly Dictionary<TelegramType, string> TelegramTypeStrings = new()
-        {
-            [TelegramType.UNKNOWN] = "    ",
-            [TelegramType.SCN] = "SCN ",
-            [TelegramType.CMD] = "CMD ",
-            [TelegramType.SOK] = "SOK ",
-            [TelegramType.SER] = "SER ",
-            [TelegramType.WDG] = "WDG ",
-            [TelegramType.WDGA] = "WDGA"
+            [Type54.UNKNOWN] = "    ",
+            [Type54.SCN] = "SCN ",
+            [Type54.CMD] = "CMD ",
+            [Type54.SOK] = "SOK ",
+            [Type54.SER] = "SER ",
+            [Type54.WDG] = "WDG ",
+            [Type54.WDGA] = "WDGA"
         };
 
         public Telegram54()
@@ -114,7 +181,7 @@ namespace CacheService.Models
         }
         public Telegram54(Telegram54 parent)
         {
-            this._parent = parent;
+            _parent = parent;
             CreateTemplate();
         }
 
@@ -141,10 +208,10 @@ namespace CacheService.Models
             return this;
         }
 
-        public Telegram54 Type(TelegramType value)
+        public Telegram54 Type(Type54 value)
         {
             _type = value;
-            return Type(TelegramTypeStrings[_type]);
+            return Type(TelegramTypeStrings[(Type54)_type]);
         }
 
         public Telegram54 Type(string value)
@@ -176,17 +243,85 @@ namespace CacheService.Models
             AddField("barcode", value.PadRight(32, ' '), 20, 32);
             return this;
         }
-        
-        public static Telegram54? Parse(string telegram)
+
+        public static class Parse
         {
-            if (telegram.Length < 54) return null;
-            if (telegram[0] != prefix) return null;
-            if (telegram[53] != suffix) return null;
-            
-            var t = new Telegram54();
-            t.Type(TelegramType.WDG);
-            t.ByteArray = Encoding.ASCII.GetBytes(telegram);
-            return t;
+            public static Telegram54? New(string telegram)
+            {
+                if (telegram.Length < 54) return null;
+                if (telegram[0] != prefix) return null;
+                if (telegram[53] != suffix) return null;
+
+                var t = new Telegram54();
+
+                t.ByteArray = Encoding.ASCII.GetBytes(telegram);
+                return t;
+            }
+
+            public static Telegram54? New(byte[] telegram)
+            {
+                if (telegram.Length < 54) return null;
+                if (telegram[0] != prefix) return null;
+                if (telegram[53] != suffix) return null;
+
+                var t = new Telegram54();
+
+                t.ByteArray = telegram;
+                return t;
+            }
+
+            public static Type54? GetType(Telegram54 t)
+            {
+                if (t is null) return Type54.INVALID;
+                return
+                    TelegramTypeStrings
+                    .First(
+                    x => x.Value.Equals(t.GetString().Substring(5, 4)))
+                    .Key;
+            }
+
+            public static string? GetNode(Telegram54 t)
+            {
+                if (t is null) return null;
+                return t.GetString().Substring(1, 4);
+            }
+
+            public static int? GetSequenceNo( Telegram54 t)
+            {
+                try
+                {
+                    return int.Parse(t.GetString().Substring(9, 3));
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+
+            public static string? GetAddr1(Telegram54 t)
+            {
+                if (t is null) return null;
+                return t.GetString().Substring(12, 4);
+            }
+
+            public static string? GetAddr2(Telegram54 t)
+            {
+                if (t is null) return null;
+                return t.GetString().Substring(16, 4);
+            }
+
+            public static string? GetBarcode(Telegram54 t)
+            {
+                if (t is null) return null;
+                return t.GetString().Substring(20, 32).TrimEnd();
+            }
+
+            public static string? GetSpare(Telegram54 t)
+            {
+                if (t is null) return null;
+                return t.GetString().Substring(53, 1);
+            }
+
         }
     }
 }

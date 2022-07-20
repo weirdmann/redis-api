@@ -18,16 +18,16 @@ namespace CacheService.Communications
     {
         public readonly string guid = Guid.NewGuid().ToString();
         protected BlockingCollection<Message>? received;
-        protected readonly ISender parent;
+        public readonly ISender parent;
         public CancellationTokenSource cts = new CancellationTokenSource();
         public bool unsubscribed = false;
-        
+
         public Subscriber(ISender parent)
         {
             this.parent = parent ?? throw new ArgumentNullException(nameof(parent));
         }
 
-        public void Notify(Message m) 
+        public void Notify(Message m)
         {
             if (received is null) return; // subscriber doesn't want to receive
             if (unsubscribed) return; // subscriber unsubscribed
@@ -172,6 +172,22 @@ namespace CacheService.Communications
 
         public Task StartListeningThread()
         {
+            Task.Factory.StartNew(() =>
+            {
+                Message m;
+                while (true)
+                {
+                    m = mainSendMessageQueue.Take();
+                    foreach (var client in clientDictionary)
+                    {
+                        if (client.Value.socket.Connected)
+                        {
+                            Send(m, client.Key);
+                        }
+                    }
+
+                }
+            });
             return Task.Factory.StartNew(() => StartAndWaitForClients());
         }
 
@@ -199,7 +215,7 @@ namespace CacheService.Communications
 
                     // Start an asynchronous socket to listen for connections.  
                     Console.WriteLine("Waiting for a connection..." + localEndPoint.ToString() + "/" + ipAddress.ToString());
-                    listener.BeginAccept( new AsyncCallback(AcceptNewClientCallback), listener);
+                    listener.BeginAccept(new AsyncCallback(AcceptNewClientCallback), listener);
 
                     // Wait until a connection is made before continuing.  
                     clientAccepted.WaitOne();
@@ -256,6 +272,8 @@ namespace CacheService.Communications
                 {
                     Console.WriteLine("Client disconnected, cancelling...");
                     state.cts.Cancel();
+                    state.socket.Shutdown(SocketShutdown.Both);
+                    state.socket.Close();
                 }
             }
             catch (SocketException e)
@@ -389,5 +407,5 @@ namespace CacheService.Communications
         }
     }
 
-    
+
 }

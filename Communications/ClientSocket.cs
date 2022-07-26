@@ -23,7 +23,10 @@ namespace CacheService.Communications
 
         // The response from the remote device.  
         private static string response = string.Empty;
-        private string _endString = ">";
+        private string _endString = "\r\n";
+
+        public string EndString { get { return _endString; } set { _endString = value; } }
+
         private IPAddress ipAddress { get; set; }
         private IPEndPoint remoteEndPoint { get; set; }
         public Task clientTask { get; set; }
@@ -31,10 +34,11 @@ namespace CacheService.Communications
         private Socket? _socket;
         private CancellationTokenSource cts = new CancellationTokenSource();
 
-        public AsynchronousClient(string ip, int port)
+        public AsynchronousClient(string ip, int port, string endstring = "\r\n")
         {
             ipAddress = IPAddress.Parse(ip);
             remoteEndPoint = new IPEndPoint(ipAddress, port);
+            _endString = endstring;
 
             clientTask = StartClientTask();
         }
@@ -68,7 +72,8 @@ namespace CacheService.Communications
 
         public Task StartClientTask()
         {
-            return Task.Factory.StartNew(StartClient);
+            new Thread(new ParameterizedThreadStart(StartClient)).Start(this);
+            return Task.Factory.StartNew(() => { }, cts.Token, TaskCreationOptions.LongRunning, TaskScheduler.Current);
         }
 
         private void SendingTask(RemoteStateObject clientState)
@@ -89,7 +94,7 @@ namespace CacheService.Communications
             }
         }
 
-        private void StartClient()
+        private void StartClient(object o)
         {
             // reset the cancellation token source
             if (cts.IsCancellationRequested) {
@@ -140,7 +145,7 @@ namespace CacheService.Communications
                 _socket.Shutdown(SocketShutdown.Both);
                 _socket.Disconnect(true);
 
-                StartClient();
+                StartClient(null);
 
             }
 
@@ -228,10 +233,11 @@ namespace CacheService.Communications
                 {
                     
                     // Process received message
+                    
                     var m = new Message(content); // create message from received data
                     m.recipientId = state.id; // set recipient id 
 
-                    Log.Information("{0} \u001b[30m\u001b[43m >RCV> \u001b[0m '{2}' ({1} bytes)", state.socket.RemoteEndPoint, content.Length, content);
+                    Log.Information("{0} \u001b[30m\u001b[43m >RCV> \u001b[0m '{2}' ({1} bytes)", state.socket.RemoteEndPoint, content.Length, content.Replace("\r\n", "<CR><LF>"));
                     // Notify subscribers
                     foreach (var subscriber in subscribers)
                     {

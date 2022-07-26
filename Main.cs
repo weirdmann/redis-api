@@ -10,10 +10,48 @@ public class Main
     private Echo? testEcho;
     private DecisionPoint testDecisionPoint;
     private LabelSender labelSender;
+    private Dictionary<string, List<AsynchronousClient>> scannerClients = new()
+    {
+        ["172.17.0.68"] = new(),
+        ["172.17.0.69"] = new(),
+        ["172.17.0.70"] = new(),
+        ["172.17.0.71"] = new(),
+        ["172.17.0.72"] = new()
+    };
+
+    private List<Subscriber> subs = new();
+    public static Action<Subscriber, Message> OnScannerMessage(string ip, int port)
+    {
+        return (sub, msg) =>
+        {
+            using var file = File.Open(@".\scanners.json", FileMode.Append);
+            file.Write(System.Text.Encoding.ASCII.GetBytes( ip + ":" + port + "\",\n"));
+        };
+        
+    }
+    
     public Main()
     {
-        testClient = new AsynchronousClient("172.17.0.12", 4161);
+        {
+            using var file = File.Open(@".\scanners.json", FileMode.OpenOrCreate);
+        }
+        
+        foreach (var s in scannerClients)
+        {
+            for (int i = 2001; i <= 2008; i++)
+            {
+                Log.Information("Initializing {0}:{1}", s.Key, i);
+                var c = new AsynchronousClient(s.Key, i);
+
+                c.Subscribe(true).StartReadingMessages(OnScannerMessage(s.Key, i));
+                s.Value.Add(c);
+            }
+        }
+
+
+        testClient = new AsynchronousClient("172.17.0.12", 4161, endstring: ">");
         labelerClient = new AsynchronousClient("172.17.0.54", 9100);
+
 
 
 
@@ -21,10 +59,10 @@ public class Main
         //    .AssignSender(testClient);
         labelSender = new LabelSender()
             .AssignCommandSender(testClient)
-            .AssignAuxCommandSender(new AsynchronousClient("127.0.0.1", 11001))
+            .AssignAuxCommandSender(new AsynchronousClient("127.0.0.1", 11001, endstring: ">"))
             .AssignLabelerSender(labelerClient);
 
-        
+
 
 
 

@@ -391,7 +391,13 @@ namespace CacheService.Communications
 
         public void Send(Message m, string? clientId = null)
         {
-            if (clientId == null) { mainSendMessageQueue.Add(m); return; };
+            if (clientId == null) {
+                foreach (var client in clientDictionary.Where(x => !x.Value.cts.IsCancellationRequested))
+                {
+                    client.Value.ToSendQueue.Add(m);
+                }
+                return;
+            };
 
             if (clientDictionary.ContainsKey(clientId))
                 clientDictionary[clientId].ToSendQueue.Add(m);

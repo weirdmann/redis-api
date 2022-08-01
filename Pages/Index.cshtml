@@ -1,0 +1,28 @@
+﻿@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Home page";
+    ViewData["NavLinkID"] = "index";
+}
+
+
+
+<div class="text-center">
+    <h1 class="display-4">Welcome</h1>
+    <p>Learn about <a href="https://docs.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+    <div class="received"></div>
+</div>
+
+<script src="~/lib/signalr.js"></script>
+<script>
+
+    let connection = new signalR.HubConnectionBuilder().withUrl("/indexHub").build();
+    
+let rcvbox = document.querySelector(".received");
+
+    connection.on("ReceiveMessage", function(message) {
+        rcvbox.innerHTML += message + "<br>";
+        Console.Log("received " + message);
+    });
+
+</script>

@@ -1,10 +1,12 @@
 using CacheService;
 using CacheService.Communications;
+using CacheService.Hubs;
 using CacheService.Models;
-
+using Microsoft.AspNetCore.SignalR;
 
 public class Main
 {
+    public AsynchronousClient signalTestClient;
     private AsynchronousClient testClient;
     private AsynchronousClient labelerClient;
     private Echo? testEcho;
@@ -19,6 +21,9 @@ public class Main
         ["172.17.0.72"] = new()
     };
 
+    private IndexHub _iHub;
+    
+
     private List<Subscriber> subs = new();
     public static Action<Subscriber, Message> OnScannerMessage(string ip, int port)
     {
@@ -30,7 +35,7 @@ public class Main
         
     }
     
-    public Main()
+    public Main(IHubContext<IndexHub> _iHub)
     {
         {
             using var file = File.Open(@".\scanners.json", FileMode.OpenOrCreate);
@@ -51,10 +56,12 @@ public class Main
 
         testClient = new AsynchronousClient("172.17.0.12", 4161, endstring: ">");
         labelerClient = new AsynchronousClient("172.17.0.54", 9100);
+        
+        signalTestClient = new("127.0.0.1", 12000, ">");
 
-
-
-
+        var sb = signalTestClient.Subscribe(true);
+        sb.StartReadingMessages((s, m) => { _iHub.Clients.All.SendAsync("ReceiveMessage", m.GetString()); Log.Information("kurde"); });
+        subs.Add(sb);
         //testDecisionPoint = new DecisionPoint("TEST")
         //    .AssignSender(testClient);
         labelSender = new LabelSender()

@@ -3,8 +3,9 @@ using CacheService.Data;
 using CacheService.Communications;
 using CacheService.Models;
 using StackExchange.Redis;
+using CacheService.Hubs;
 using System.Text;
-
+using Microsoft.AspNetCore.SignalR;
 
 using var log = new LoggerConfiguration()
     .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss:fff} {Level:u4}] {Message:lj}{NewLine}{Exception}",
@@ -65,8 +66,14 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(opt =>
     ConnectionMultiplexer.Connect(builder.Configuration.GetConnectionString("DockerRedisConnection")));
 
 builder.Services.AddScoped<IPlatformRepo, RedisPlatformRepo>();
-builder.Services.AddSingleton<Main>(new Main());
+
+//builder.Services.AddScoped<IndexHub>();
+builder.Services.AddSingleton<Main>(new Main((IHubContext<IndexHub>)builder.Services.BuildServiceProvider().GetService<IHubClients<IndexHub>>()));
+
+builder.Services.AddRazorPages();
 builder.Services.AddControllers();
+builder.Services.AddSignalR();
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -82,9 +89,14 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.UseStaticFiles();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapRazorPages();
+
+app.MapHub<IndexHub>("/indexHub");
+
 
 app.Run();
 Log.CloseAndFlush();
